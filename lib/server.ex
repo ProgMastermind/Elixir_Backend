@@ -7,9 +7,8 @@ defmodule Server do
   use Application
 
   def start(_type, _args) do
-    port = String.to_integer(System.get_env("PORT") || "4000")
-    # Make sure this function is defined to return your config
     config = parse_args()
+    port = String.to_integer(System.get_env("PORT") || "4000")
 
     children = [
       {Plug.Cowboy, scheme: :http, plug: HealthCheck, options: [port: port]},
@@ -24,40 +23,30 @@ defmodule Server do
       Server.RdbStore,
       Server.ClientState,
       Server.Streamstore,
-      {Task, fn -> Server.listen(parse_args()) end},
-      {Task.Supervisor, name: Server.TaskSupervisor},
       {Task, fn -> Server.listen(config) end}
     ]
 
     opts = [strategy: :one_for_one, name: :sup]
     {:ok, pid} = Supervisor.start_link(children, opts)
 
-    # set_initial_config(config)
-    # load_rdb()
+    set_initial_config(config)
+    load_rdb()
 
     {:ok, pid}
   end
 
-  # defp parse_args do
-  #   {opts, _, _} =
-  #     OptionParser.parse(System.argv(),
-  #       switches: [port: :integer, replicaof: :string, dir: :string, dbfilename: :string]
-  #     )
-
-  #   port = opts[:port] || 6379
-  #   replica_of = parse_replicaof(opts[:replicaof])
-  #   dir = opts[:dir]
-  #   dbfilename = opts[:dbfilename]
-
-  #   %{port: port, replica_of: replica_of, dir: dir, dbfilename: dbfilename}
-  # end
-  #
   defp parse_args do
-    # This should return the config structure your Server module expects
-    %{
-      port: String.to_integer(System.get_env("PORT") || "4000")
-      # ... other config options ...
-    }
+    {opts, _, _} =
+      OptionParser.parse(System.argv(),
+        switches: [port: :integer, replicaof: :string, dir: :string, dbfilename: :string]
+      )
+
+    port = opts[:port] || 6379
+    replica_of = parse_replicaof(opts[:replicaof])
+    dir = opts[:dir]
+    dbfilename = opts[:dbfilename]
+
+    %{port: port, replica_of: replica_of, dir: dir, dbfilename: dbfilename}
   end
 
   defp parse_replicaof(nil), do: nil
@@ -84,16 +73,18 @@ defmodule Server do
   Listen for incoming connections
   """
   def listen(config) do
-    port = String.to_integer(System.get_env("PORT") || "4000")
-    # Use the next port for TCP connections
-    tcp_port = port + 1
-
-    Logger.info("TCP Server listening on port #{tcp_port}")
+    port = String.to_integer(System.get_env("PORT") || Integer.to_string(config.port))
+    IO.puts("Server listening on port #{port}")
 
     {:ok, socket} =
-      :gen_tcp.listen(tcp_port, [:binary, active: false, reuseaddr: true, buffer: 1024 * 1024])
+      :gen_tcp.listen(port, [:binary, active: false, reuseaddr: true, buffer: 1024 * 1024])
 
-    Logger.info("Accepting TCP connections on port #{tcp_port}")
+    if config.replica_of do
+      spawn(fn ->
+        connect_to_master(config.replica_of, config.port)
+      end)
+    end
+
     loop_acceptor(socket, config)
   end
 
@@ -387,85 +378,51 @@ defmodule Server do
   # ----------------------------------------------------------------------------------
   # Server Code
   defp loop_acceptor(socket, config) do
-    {:ok, client} = :gen_tcp.accept(socket)
+    case :gen_tcp.accept(socket) do
+      {:ok, client} ->
+        spawn(fn -> serve(client, config) end)
+        loop_acceptor(socket, config)
 
-    {:ok, pid} =
-      Task.Supervisor.start_child(Server.TaskSupervisor, fn -> serve(client, config) end)
-
-    :ok = :gen_tcp.controlling_process(client, pid)
-    loop_acceptor(socket, config)
+      {:error, reason} ->
+        {:error, reason}
+    end
   end
 
   defp serve(client, config) do
-    case read_line(client) do
-      {:ok, data} ->
-        case process_command(data, client, config) do
-          {:ok, _result} ->
-            serve(client, config)
+    try do
+      client
+      |> read_line()
+      |> process_command(client, config)
 
-          {:error, :closed} ->
-            Logger.info("Client disconnected")
-
-          {:error, reason} ->
-            Logger.error("Error processing command: #{inspect(reason)}")
-            :gen_tcp.close(client)
-        end
-
-      {:error, :closed} ->
-        Logger.info("Client disconnected")
-
-      {:error, reason} ->
-        Logger.error("Error reading from socket: #{inspect(reason)}")
-        :gen_tcp.close(client)
+      serve(client, config)
+    catch
+      kind, reason ->
+        {:error, {kind, reason, __STACKTRACE__}}
     end
   end
 
   defp read_line(client) do
-    :gen_tcp.recv(client, 0)
-  end
-
-  def process_command(command, client, config) do
-    Logger.info("Received command: #{inspect(command)}")
-
-    case command do
-      {:error, :closed} ->
-        Logger.info("Connection closed")
-        {:error, :closed}
-
-      data when is_binary(data) ->
-        try do
-          command_list = String.split(data)
-          packed_command = Server.Protocol.pack(command_list) |> IO.iodata_to_binary()
-
-          case Server.Protocol.parse(packed_command) do
-            {:ok, parsed_data, _rest} ->
-              result = handle_command(parsed_data, client, config)
-              {:ok, result}
-
-            {:continuation, _fun} ->
-              Logger.warning("Incomplete command")
-              {:error, :incomplete_command}
-          end
-        rescue
-          e ->
-            Logger.error("Error processing command: #{inspect(e)}")
-            {:error, :invalid_command}
-        end
-
-      _ ->
-        Logger.error("Invalid command format: #{inspect(command)}")
-        {:error, :invalid_format}
+    case :gen_tcp.recv(client, 0) do
+      {:ok, data} -> data
+      {:error, reason} -> {:error, reason}
     end
   end
 
-  def process_command({:error, :closed}, _client, _config) do
-    Logger.info("Connection closed")
-    {:error, :closed}
-  end
+  defp process_command(command, client, config) do
+    # Debug line
+    IO.puts("Received command: #{inspect(command)}")
 
-  def process_command({:error, reason}, _client, _config) do
-    Logger.error("Error in command: #{inspect(reason)}")
-    {:error, reason}
+    case Server.Protocol.parse(command) do
+      {:ok, parsed_data, _rest} ->
+        # Debug line
+        IO.puts("Parsed data: #{inspect(parsed_data)}")
+        handle_command(parsed_data, client, config)
+
+      {:continuation, _fun} ->
+        # Debug line
+        IO.puts("Incomplete command")
+        write_line("-ERR Incomplete command\r\n", client)
+    end
   end
 
   defp handle_command(parsed_data, client, config) do
@@ -603,15 +560,11 @@ defmodule Server do
   end
 
   defp execute_command("SET", [key, value | rest], client) do
-    IO.puts("Executing SET command - Key: #{key}, Value: #{value}, Rest: #{inspect(rest)}")
-
     if Server.ClientState.in_transaction?(client) do
       Server.ClientState.add_command(client, ["SET", key, value | rest])
       write_line("+QUEUED\r\n", client)
     else
       try do
-        IO.puts("Attempting to update store")
-
         case rest do
           [command, time] ->
             command = String.upcase(to_string(command))
@@ -622,7 +575,6 @@ defmodule Server do
             end
 
           [] ->
-            IO.puts("Updating without expiry")
             Server.Store.update(key, value)
         end
 
@@ -639,34 +591,6 @@ defmodule Server do
       end
     end
   end
-
-  #
-  # defp execute_command("SET", args, client) do
-  #   IO.puts("Executing SET command with args: #{inspect(args)}")
-
-  #   case args do
-  #     [key | rest] ->
-  #       value = Enum.join(rest, " ")
-  #       IO.puts("Parsed SET command - Key: #{key}, Value: #{value}")
-
-  #       try do
-  #         IO.puts("Attempting to update store")
-  #         Server.Store.update(key, value)
-  #         IO.puts("Store updated, setting pending writes")
-  #         Server.Pendingwrites.set_pending_writes()
-  #         write_line("+OK\r\n", client)
-  #         IO.puts("SET command execution completed")
-  #       catch
-  #         error ->
-  #           IO.puts("Error in SET command execution: #{inspect(error)}")
-  #           write_line("-ERR Internal server error\r\n", client)
-  #       end
-
-  #     _ ->
-  #       IO.puts("Invalid SET command format")
-  #       write_line("-ERR Invalid SET command format\r\n", client)
-  #   end
-  # end
 
   defp execute_command("KEYS", ["*"], client) do
     Logger.info("Executing keys")
