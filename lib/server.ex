@@ -27,8 +27,8 @@ defmodule Server do
     opts = [strategy: :one_for_one, name: :sup]
     {:ok, pid} = Supervisor.start_link(children, opts)
 
-    set_initial_config(config)
-    load_rdb()
+    # set_initial_config(config)
+    # load_rdb()
 
     {:ok, pid}
   end
@@ -71,7 +71,7 @@ defmodule Server do
   Listen for incoming connections
   """
   def listen(config) do
-    port = String.to_integer(System.get_env("PORT") || Integer.to_string(config.port))
+    port = String.to_integer(System.get_env("PORT") || "4000")
     IO.puts("Server listening on port #{port}")
 
     {:ok, socket} =
