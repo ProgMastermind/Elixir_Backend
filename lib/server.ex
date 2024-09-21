@@ -21,7 +21,8 @@ defmodule Server do
       Server.RdbStore,
       Server.ClientState,
       Server.Streamstore,
-      {Task, fn -> Server.listen(parse_args()) end}
+      {Task, fn -> Server.listen(parse_args()) end},
+      {Task.Supervisor, name: Server.TaskSupervisor}
     ]
 
     opts = [strategy: :one_for_one, name: :sup]
@@ -77,17 +78,7 @@ defmodule Server do
     {:ok, socket} =
       :gen_tcp.listen(port, [:binary, active: false, reuseaddr: true, buffer: 1024 * 1024])
 
-    # IO.puts("Server listening on port #{config.port}")
-
-    # {:ok, socket} =
-    #   :gen_tcp.listen(config.port, [:binary, active: false, reuseaddr: true, buffer: 1024 * 1024])
-
-    if config.replica_of do
-      spawn(fn ->
-        connect_to_master(config.replica_of, config.port)
-      end)
-    end
-
+    Logger.info("Accepting connections on port #{port}")
     loop_acceptor(socket, config)
   end
 
@@ -381,14 +372,13 @@ defmodule Server do
   # ----------------------------------------------------------------------------------
   # Server Code
   defp loop_acceptor(socket, config) do
-    case :gen_tcp.accept(socket) do
-      {:ok, client} ->
-        spawn(fn -> serve(client, config) end)
-        loop_acceptor(socket, config)
+    {:ok, client} = :gen_tcp.accept(socket)
 
-      {:error, reason} ->
-        {:error, reason}
-    end
+    {:ok, pid} =
+      Task.Supervisor.start_child(Server.TaskSupervisor, fn -> serve(client, config) end)
+
+    :ok = :gen_tcp.controlling_process(client, pid)
+    loop_acceptor(socket, config)
   end
 
   defp serve(client, config) do
@@ -397,6 +387,9 @@ defmodule Server do
         case process_command(data, client, config) do
           {:ok, _result} ->
             serve(client, config)
+
+          {:error, :closed} ->
+            Logger.info("Client disconnected")
 
           {:error, reason} ->
             Logger.error("Error processing command: #{inspect(reason)}")
@@ -416,26 +409,37 @@ defmodule Server do
     :gen_tcp.recv(client, 0)
   end
 
-  def process_command(command, client, config) when is_binary(command) do
+  def process_command(command, client, config) do
     Logger.info("Received command: #{inspect(command)}")
 
-    try do
-      command_list = String.split(command)
-      packed_command = Server.Protocol.pack(command_list) |> IO.iodata_to_binary()
+    case command do
+      {:error, :closed} ->
+        Logger.info("Connection closed")
+        {:error, :closed}
 
-      case Server.Protocol.parse(packed_command) do
-        {:ok, parsed_data, _rest} ->
-          result = handle_command(parsed_data, client, config)
-          {:ok, result}
+      data when is_binary(data) ->
+        try do
+          command_list = String.split(data)
+          packed_command = Server.Protocol.pack(command_list) |> IO.iodata_to_binary()
 
-        {:continuation, _fun} ->
-          Logger.warning("Incomplete command")
-          {:error, :incomplete_command}
-      end
-    rescue
-      e ->
-        Logger.error("Error processing command: #{inspect(e)}")
-        {:error, :invalid_command}
+          case Server.Protocol.parse(packed_command) do
+            {:ok, parsed_data, _rest} ->
+              result = handle_command(parsed_data, client, config)
+              {:ok, result}
+
+            {:continuation, _fun} ->
+              Logger.warning("Incomplete command")
+              {:error, :incomplete_command}
+          end
+        rescue
+          e ->
+            Logger.error("Error processing command: #{inspect(e)}")
+            {:error, :invalid_command}
+        end
+
+      _ ->
+        Logger.error("Invalid command format: #{inspect(command)}")
+        {:error, :invalid_format}
     end
   end
 
