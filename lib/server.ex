@@ -8,7 +8,6 @@ defmodule Server do
 
   def start(_type, _args) do
     config = parse_args()
-    port = String.to_integer(System.get_env("PORT") || Integer.to_string(config.port))
 
     children = [
       Server.Store,
@@ -22,15 +21,17 @@ defmodule Server do
       Server.RdbStore,
       Server.ClientState,
       Server.Streamstore,
-      {Task, fn -> Server.listen(config) end, id: Server.ListenerTask}
-
+      %{
+        id: Server.ListenerTask,
+        start: {Task, :start_link, [fn -> Server.listen(config) end]}
+      }
     ]
 
     opts = [strategy: :one_for_one, name: :sup]
     {:ok, pid} = Supervisor.start_link(children, opts)
 
-    set_initial_config(config)
-    load_rdb()
+    # set_initial_config(config)
+    # load_rdb()
 
     {:ok, pid}
   end
@@ -76,16 +77,20 @@ defmodule Server do
     port = String.to_integer(System.get_env("PORT") || Integer.to_string(config.port))
     IO.puts("Server listening on port #{port}")
 
-    {:ok, socket} =
-      :gen_tcp.listen(port, [:binary, active: false, reuseaddr: true, buffer: 1024 * 1024])
+    case :gen_tcp.listen(port, [:binary, active: false, reuseaddr: true, buffer: 1024 * 1024]) do
+      {:ok, socket} ->
+        loop_acceptor(socket, config)
 
-    if config.replica_of do
-      spawn(fn ->
-        connect_to_master(config.replica_of, config.port)
-      end)
+      {:error, :eaddrinuse} ->
+        IO.puts("Error: Port #{port} is already in use")
+        # Wait for 5 seconds before retrying
+        Process.sleep(5000)
+        # Retry listening
+        listen(config)
+
+      {:error, reason} ->
+        IO.puts("Error listening on port #{port}: #{inspect(reason)}")
     end
-
-    loop_acceptor(socket, config)
   end
 
   defp connect_to_master({master_host, master_port}, replica_port) do
