@@ -7,7 +7,7 @@ defmodule Server do
   use Application
 
   def start(_type, _args) do
-    config = parse_args()
+    # config = parse_args()
 
     children = [
       Server.Store,
@@ -21,7 +21,7 @@ defmodule Server do
       Server.RdbStore,
       Server.ClientState,
       Server.Streamstore,
-      {Task, fn -> Server.listen(config) end}
+      {Task, fn -> Server.listen(parse_args()) end}
     ]
 
     opts = [strategy: :one_for_one, name: :sup]
@@ -71,8 +71,8 @@ defmodule Server do
   Listen for incoming connections
   """
   def listen(config) do
-    port = String.to_integer(System.get_env("PORT") || "4000")
-    IO.puts("Server listening on port #{port}")
+    port = String.to_integer(System.get_env("PORT") || "6379")
+    Logger.info("Server listening on port #{port}")
 
     {:ok, socket} =
       :gen_tcp.listen(port, [:binary, active: false, reuseaddr: true, buffer: 1024 * 1024])
@@ -391,58 +391,62 @@ defmodule Server do
     end
   end
 
-  def serve(client, config) do
-    try do
-      result =
-        client
-        |> read_line()
-        |> process_command(client, config)
+  defp serve(client, config) do
+    case read_line(client) do
+      {:ok, data} ->
+        case process_command(data, client, config) do
+          {:ok, _result} ->
+            serve(client, config)
 
-      IO.puts("Command processed: #{inspect(result)}")
-      serve(client, config)
-    catch
-      kind, reason ->
-        IO.puts("Error in serve: #{inspect({kind, reason, __STACKTRACE__})}")
-        {:error, {kind, reason, __STACKTRACE__}}
+          {:error, reason} ->
+            Logger.error("Error processing command: #{inspect(reason)}")
+            :gen_tcp.close(client)
+        end
+
+      {:error, :closed} ->
+        Logger.info("Client disconnected")
+
+      {:error, reason} ->
+        Logger.error("Error reading from socket: #{inspect(reason)}")
+        :gen_tcp.close(client)
     end
   end
 
   defp read_line(client) do
-    case :gen_tcp.recv(client, 0) do
-      {:ok, data} ->
-        IO.puts("Received data: #{inspect(data)}")
-        data
+    :gen_tcp.recv(client, 0)
+  end
 
-      {:error, reason} ->
-        IO.puts("Error reading from socket: #{inspect(reason)}")
-        {:error, reason}
+  def process_command(command, client, config) when is_binary(command) do
+    Logger.info("Received command: #{inspect(command)}")
+
+    try do
+      command_list = String.split(command)
+      packed_command = Server.Protocol.pack(command_list) |> IO.iodata_to_binary()
+
+      case Server.Protocol.parse(packed_command) do
+        {:ok, parsed_data, _rest} ->
+          result = handle_command(parsed_data, client, config)
+          {:ok, result}
+
+        {:continuation, _fun} ->
+          Logger.warning("Incomplete command")
+          {:error, :incomplete_command}
+      end
+    rescue
+      e ->
+        Logger.error("Error processing command: #{inspect(e)}")
+        {:error, :invalid_command}
     end
   end
 
-  def process_command(command, client, config) do
-    # Debug line
-    IO.puts("Received command: #{inspect(command)}")
+  def process_command({:error, :closed}, _client, _config) do
+    Logger.info("Connection closed")
+    {:error, :closed}
+  end
 
-    # Split the command string into a list of arguments
-    command_list = String.split(command)
-
-    # Pack the command list into RESP format
-    packed_command = Server.Protocol.pack(command_list) |> IO.iodata_to_binary()
-
-    # Debug line
-    IO.puts("Packed command: #{inspect(packed_command)}")
-
-    case Server.Protocol.parse(packed_command) do
-      {:ok, parsed_data, _rest} ->
-        # Debug line
-        IO.puts("Parsed data: #{inspect(parsed_data)}")
-        handle_command(parsed_data, client, config)
-
-      {:continuation, _fun} ->
-        # Debug line
-        IO.puts("Incomplete command")
-        write_line("-ERR Incomplete command\r\n", client)
-    end
+  def process_command({:error, reason}, _client, _config) do
+    Logger.error("Error in command: #{inspect(reason)}")
+    {:error, reason}
   end
 
   defp handle_command(parsed_data, client, config) do
