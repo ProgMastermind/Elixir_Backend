@@ -20,7 +20,8 @@ defmodule App.MixProject do
 
   defp deps do
     [
-      # Your dependencies here, or leave it empty if you have none
+      # or any other simple dependency
+      {:jason, "~> 1.2"}
     ]
   end
 end
