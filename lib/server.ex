@@ -8,10 +8,9 @@ defmodule Server do
 
   def start(_type, _args) do
     config = parse_args()
-    port = String.to_integer(System.get_env("PORT") || "4000")
+    port = String.to_integer(System.get_env("PORT") || Integer.to_string(config.port))
 
     children = [
-      {Plug.Cowboy, scheme: :http, plug: HealthCheck, options: [port: port]},
       Server.Store,
       Server.Replicationstate,
       Server.Commandbuffer,
@@ -23,7 +22,8 @@ defmodule Server do
       Server.RdbStore,
       Server.ClientState,
       Server.Streamstore,
-      {Task, fn -> Server.listen(config) end}
+      {Task, fn -> Server.listen(config) end, id: Server.ListenerTask}
+
     ]
 
     opts = [strategy: :one_for_one, name: :sup]
