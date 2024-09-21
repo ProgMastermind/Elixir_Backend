@@ -71,7 +71,7 @@ defmodule Server do
   Listen for incoming connections
   """
   def listen(config) do
-    port = String.to_integer(System.get_env("PORT") || "6379")
+    port = String.to_integer(System.get_env("PORT") || Integer.to_string(config.port))
     IO.puts("Server listening on port #{port}")
 
     {:ok, socket} =
@@ -391,23 +391,31 @@ defmodule Server do
     end
   end
 
-  defp serve(client, config) do
+  def serve(client, config) do
     try do
-      client
-      |> read_line()
-      |> process_command(client, config)
+      result =
+        client
+        |> read_line()
+        |> process_command(client, config)
 
+      IO.puts("Command processed: #{inspect(result)}")
       serve(client, config)
     catch
       kind, reason ->
+        IO.puts("Error in serve: #{inspect({kind, reason, __STACKTRACE__})}")
         {:error, {kind, reason, __STACKTRACE__}}
     end
   end
 
   defp read_line(client) do
     case :gen_tcp.recv(client, 0) do
-      {:ok, data} -> data
-      {:error, reason} -> {:error, reason}
+      {:ok, data} ->
+        IO.puts("Received data: #{inspect(data)}")
+        data
+
+      {:error, reason} ->
+        IO.puts("Error reading from socket: #{inspect(reason)}")
+        {:error, reason}
     end
   end
 
