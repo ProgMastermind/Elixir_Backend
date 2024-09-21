@@ -7,9 +7,12 @@ defmodule Server do
   use Application
 
   def start(_type, _args) do
-    # config = parse_args()
+    port = String.to_integer(System.get_env("PORT") || "4000")
+    # Make sure this function is defined to return your config
+    config = parse_args()
 
     children = [
+      {Plug.Cowboy, scheme: :http, plug: HealthCheck, options: [port: port]},
       Server.Store,
       Server.Replicationstate,
       Server.Commandbuffer,
@@ -22,7 +25,8 @@ defmodule Server do
       Server.ClientState,
       Server.Streamstore,
       {Task, fn -> Server.listen(parse_args()) end},
-      {Task.Supervisor, name: Server.TaskSupervisor}
+      {Task.Supervisor, name: Server.TaskSupervisor},
+      {Task, fn -> Server.listen(config) end}
     ]
 
     opts = [strategy: :one_for_one, name: :sup]
@@ -34,18 +38,26 @@ defmodule Server do
     {:ok, pid}
   end
 
+  # defp parse_args do
+  #   {opts, _, _} =
+  #     OptionParser.parse(System.argv(),
+  #       switches: [port: :integer, replicaof: :string, dir: :string, dbfilename: :string]
+  #     )
+
+  #   port = opts[:port] || 6379
+  #   replica_of = parse_replicaof(opts[:replicaof])
+  #   dir = opts[:dir]
+  #   dbfilename = opts[:dbfilename]
+
+  #   %{port: port, replica_of: replica_of, dir: dir, dbfilename: dbfilename}
+  # end
+  #
   defp parse_args do
-    {opts, _, _} =
-      OptionParser.parse(System.argv(),
-        switches: [port: :integer, replicaof: :string, dir: :string, dbfilename: :string]
-      )
-
-    port = opts[:port] || 6379
-    replica_of = parse_replicaof(opts[:replicaof])
-    dir = opts[:dir]
-    dbfilename = opts[:dbfilename]
-
-    %{port: port, replica_of: replica_of, dir: dir, dbfilename: dbfilename}
+    # This should return the config structure your Server module expects
+    %{
+      port: String.to_integer(System.get_env("PORT") || "4000")
+      # ... other config options ...
+    }
   end
 
   defp parse_replicaof(nil), do: nil
@@ -72,13 +84,16 @@ defmodule Server do
   Listen for incoming connections
   """
   def listen(config) do
-    port = String.to_integer(System.get_env("PORT") || "6379")
-    Logger.info("Server listening on port #{port}")
+    port = String.to_integer(System.get_env("PORT") || "4000")
+    # Use the next port for TCP connections
+    tcp_port = port + 1
+
+    Logger.info("TCP Server listening on port #{tcp_port}")
 
     {:ok, socket} =
-      :gen_tcp.listen(port, [:binary, active: false, reuseaddr: true, buffer: 1024 * 1024])
+      :gen_tcp.listen(tcp_port, [:binary, active: false, reuseaddr: true, buffer: 1024 * 1024])
 
-    Logger.info("Accepting connections on port #{port}")
+    Logger.info("Accepting TCP connections on port #{tcp_port}")
     loop_acceptor(socket, config)
   end
 

@@ -21,7 +21,8 @@ defmodule App.MixProject do
   defp deps do
     [
       # or any other simple dependency
-      {:jason, "~> 1.2"}
+      {:jason, "~> 1.2"},
+      {:plug_cowboy, "~> 2.5"}
     ]
   end
 end
