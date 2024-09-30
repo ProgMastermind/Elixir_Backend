@@ -81,10 +81,18 @@ defmodule Server do
   """
 
   def listen(config) do
-    IO.puts("Server listening on port #{config.port}")
+    # IO.puts("Server listening on port #{config.port}")
+    port = String.to_integer(System.get_env("PORT") || "4000")
+    Logger.info("Attempting to listen on port #{port}")
 
     {:ok, socket} =
-      :gen_tcp.listen(config.port, [:binary, active: false, reuseaddr: true, buffer: 1024 * 1024])
+      :gen_tcp.listen(config.port, [
+        :binary,
+        active: false,
+        reuseaddr: true,
+        buffer: 1024 * 1024,
+        ip: {0, 0, 0, 0}
+      ])
 
     if config.replica_of do
       spawn(fn ->
@@ -580,24 +588,25 @@ defmodule Server do
 
   #
 
-  def handle_health_check(client) do
+  defp handle_health_check(client) do
     response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK"
     :gen_tcp.send(client, response)
+    Logger.info("Health check response sent")
     :gen_tcp.close(client)
   end
 
   defp serve(client, config) do
-    # 5 second timeout
+    Logger.info("New client connection established")
+
     case :gen_tcp.recv(client, 0, 5000) do
       {:ok, data} ->
+        Logger.info("Received data: #{inspect(data)}")
+
         cond do
           String.starts_with?(data, "GET / HTTP/1.1") or
               String.starts_with?(data, "GET /health HTTP/1.1") ->
-            Logger.info("Received health check request")
-            response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK"
-            :gen_tcp.send(client, response)
-            Logger.info("Sent health check response")
-            :gen_tcp.close(client)
+            Logger.info("Handling health check request")
+            handle_health_check(client)
 
           true ->
             process_command(data, client, config)
@@ -605,7 +614,7 @@ defmodule Server do
         end
 
       {:error, :closed} ->
-        Logger.info("Client disconnected")
+        Logger.info("Client disconnected normally")
 
       {:error, :timeout} ->
         Logger.info("Client connection timed out")
