@@ -8,7 +8,6 @@ defmodule Server do
 
   def start(_type, _args) do
     config = parse_args()
-    port = String.to_integer(System.get_env("PORT") || Integer.to_string(config.port))
 
     children = [
       Server.Store,
@@ -22,16 +21,35 @@ defmodule Server do
       Server.RdbStore,
       Server.ClientState,
       Server.Streamstore,
-      Supervisor.child_spec({Task, fn -> listen(config) end}, id: Server.ListenerTask)
+      {Task, fn -> Server.listen(config) end},
+      {Registry, keys: :duplicate, name: Registry.WebSockets},
+      Plug.Cowboy.child_spec(
+        scheme: :http,
+        plug: WebSocketHandler,
+        options: [
+          dispatch: dispatch(),
+          port: 3001
+        ]
+      )
     ]
 
     opts = [strategy: :one_for_one, name: :sup]
     {:ok, pid} = Supervisor.start_link(children, opts)
 
-    set_initial_config(config)
-    load_rdb()
+    # set_initial_config(config)
+    # load_rdb()
 
     {:ok, pid}
+  end
+
+  defp dispatch do
+    [
+      {:_,
+       [
+         {"/ws/master", WebSocketHandler, [:master]},
+         {"/ws/slave", WebSocketHandler, [:slave]}
+       ]}
+    ]
   end
 
   defp parse_args do
@@ -55,42 +73,23 @@ defmodule Server do
     {host, String.to_integer(port)}
   end
 
-  defp set_initial_config(config) do
-    Logger.info("Configuring dir: #{config.dir}")
-    Logger.info("Configuring dbname: #{config.dbfilename}")
-    if config.dir, do: Server.Config.set_config("dir", config.dir)
-    if config.dbfilename, do: Server.Config.set_config("dbfilename", config.dbfilename)
-  end
-
-  defp load_rdb do
-    rdb_path = Server.Config.get_rdb_path()
-    Logger.info("RDB file path is: #{rdb_path}")
-    Server.RdbStore.load_rdb(rdb_path)
-  end
-
   @doc """
   Listen for incoming connections
   """
+
   def listen(config) do
-    port = String.to_integer(System.get_env("PORT") || Integer.to_string(config.port))
-    IO.puts("Server attempting to listen on port #{port}")
+    IO.puts("Server listening on port #{config.port}")
 
-    case :gen_tcp.listen(port, [:binary, active: false, reuseaddr: true, buffer: 1024 * 1024]) do
-      {:ok, socket} ->
-        IO.puts("Server successfully listening on port #{port}")
-        loop_acceptor(socket, config)
+    {:ok, socket} =
+      :gen_tcp.listen(config.port, [:binary, active: false, reuseaddr: true, buffer: 1024 * 1024])
 
-      {:error, :eaddrinuse} ->
-        IO.puts("Error: Port #{port} is already in use. Retrying in 5 seconds...")
-        # Wait for 5 seconds before retrying
-        Process.sleep(5000)
-        # Retry listening
-        listen(config)
-
-      {:error, reason} ->
-        IO.puts("Error listening on port #{port}: #{inspect(reason)}")
-        # You might want to add some error handling here, like retrying or exiting
+    if config.replica_of do
+      spawn(fn ->
+        connect_to_master(config.replica_of, config.port)
+      end)
     end
+
+    loop_acceptor(socket, config)
   end
 
   defp connect_to_master({master_host, master_port}, replica_port) do
@@ -103,51 +102,103 @@ defmodule Server do
         {:ok, {remote_address, remote_port}} = :inet.peername(socket)
         {:ok, {local_address, local_port}} = :inet.sockname(socket)
 
-        Logger.info(
+        log_message =
           "Connected to #{:inet.ntoa(remote_address)}:#{remote_port} from #{:inet.ntoa(local_address)}:#{local_port}"
-        )
+
+        Logger.info(log_message)
 
         case perform_handshake(socket, replica_port) do
           :ok ->
-            Logger.info("Handshake completed successfully")
+            log_message = "Handshake completed successfully"
+            Logger.info(log_message)
+
             parse_commands(socket)
 
           {:error, reason} ->
-            Logger.error("Handshake failed: #{inspect(reason)}")
+            log_message = "Handshake failed: #{inspect(reason)}"
+            Logger.error(log_message)
         end
 
       {:error, reason} ->
-        Logger.error("Failed to connect to master: #{inspect(reason)}")
+        log_message = "Failed to connect to master: #{inspect(reason)}"
+        Logger.error(log_message)
+    end
+  end
+
+  def start_and_connect_slave do
+    port = 6380 + :rand.uniform(100)
+    config = %{port: port, replica_of: {"localhost", 6379}, dir: nil, dbfilename: nil}
+
+    case Task.start(fn -> Server.listen(config) end) do
+      {:ok, _pid} ->
+        # Give some time for the slave to start
+        Process.sleep(1000)
+        {:ok, port}
+
+      error ->
+        {:error, "Failed to start slave: #{inspect(error)}"}
+    end
+  end
+
+  def start_and_connect_second_slave do
+    port = 6380 + :rand.uniform(100)
+    config = %{port: port, replica_of: {"localhost", 6379}, dir: nil, dbfilename: nil}
+
+    case Task.start(fn -> Server.listen(config) end) do
+      {:ok, _pid} ->
+        Process.sleep(1000)
+        {:ok, port}
+
+      error ->
+        {:error, "Failed to start second slave: #{inspect(error)}"}
     end
   end
 
   # ------------------------------------------------------------------------
   # Replica handling commands
 
+  # one slave
   defp perform_handshake(socket, replica_port) do
+    WebSocketHandler.broadcast_update("Handshake started", :all)
+    # Add delay for visualization
+    Process.sleep(2000)
+
     with :ok <- send_ping(socket),
          :ok <- send_replconf_listening_port(socket, replica_port),
          :ok <- send_replconf_capa(socket),
          :ok <- send_psync(socket) do
+      WebSocketHandler.broadcast_update("Handshake completed successfully", :all)
+      Process.sleep(2000)
       :ok
     else
       {:error, reason} ->
-        IO.puts("Handshake failed: #{inspect(reason)}")
-        :gen_tcp.close(socket)
+        WebSocketHandler.broadcast_update("Handshake failed: #{inspect(reason)}")
         {:error, reason}
     end
   end
 
   defp send_ping(socket) do
+    WebSocketHandler.broadcast_update("Slave -> Master: PING", :slave)
+    Process.sleep(2000)
     send_command(socket, ["PING"], "+PONG\r\n")
+    WebSocketHandler.broadcast_update("Master -> Slave: PONG", :master)
+    Process.sleep(2000)
   end
 
   defp send_replconf_listening_port(socket, port) do
+    WebSocketHandler.broadcast_update("Slave -> Master: REPLCONF listening-port #{port}", :slave)
+    Process.sleep(2000)
     send_command(socket, ["REPLCONF", "listening-port", to_string(port)], "+OK\r\n")
+    WebSocketHandler.broadcast_update("Master -> Slave: OK", :master)
+    Process.sleep(2000)
   end
 
   defp send_replconf_capa(socket) do
+    WebSocketHandler.broadcast_update("Slave -> Master: REPLCONF capa psync2", :slave)
+    Process.sleep(2000)
     send_command(socket, ["REPLCONF", "capa", "psync2"], "+OK\r\n")
+    WebSocketHandler.broadcast_update("Master -> Slave: OK", :master)
+    Process.sleep(2000)
   end
 
   defp send_command(socket, command, expected_response) do
@@ -188,11 +239,16 @@ defmodule Server do
   end
 
   defp send_psync(socket) do
+    WebSocketHandler.broadcast_update("Slave -> Master: PSYNC ? -1", :slave)
+    Process.sleep(2000)
     packed_command = Server.Protocol.pack(["PSYNC", "?", "-1"]) |> IO.iodata_to_binary()
 
     case :gen_tcp.send(socket, packed_command) do
       :ok ->
         receive_psync_response(socket)
+
+        WebSocketHandler.broadcast_update("Master -> Slave: FULLRESYNC ...", :master)
+        Process.sleep(2000)
 
       {:error, reason} ->
         IO.puts("Failed to send PSYNC command")
@@ -233,6 +289,22 @@ defmodule Server do
     end
   end
 
+  def reset_all_states do
+    Server.Acknowledge.reset_ack_count()
+    Server.Bytes.reset()
+    Server.Clientbuffer.clear_all()
+    Server.ClientState.reset_all()
+    Server.Commandbuffer.clear_all()
+    Server.Config.reset_all()
+    Server.Pendingwrites.clear_pending_writes()
+    Server.Replicationstate.reset()
+    Server.Store.clear_all()
+    Server.Streamstore.clear_all()
+    # Server.Transactionstate.reset()
+
+    Logger.info("All states have been reset")
+  end
+
   def parse_commands(socket) do
     case :gen_tcp.recv(socket, 0, 5000) do
       {:ok, data} ->
@@ -249,6 +321,7 @@ defmodule Server do
         parse_commands(socket)
 
       {:error, closed} ->
+        Logger.info("Connection closed: #{inspect(closed)}")
         {:error, closed}
     end
   end
@@ -365,6 +438,16 @@ defmodule Server do
     end
   end
 
+  def trigger_replconf_getack do
+    # This function will be called when "REPLCONF GETACK *" is entered in the master frontend
+    clients = Server.Clientbuffer.get_clients()
+    Logger.info("Number of clients: #{clients}")
+
+    Enum.each(clients, fn client_socket ->
+      send_replconf_ack(client_socket)
+    end)
+  end
+
   defp send_replconf_ack(socket) do
     offset = Server.Bytes.get_offset()
     Logger.info("Executing REPLCONF GETACK. Current offset: #{offset}")
@@ -393,18 +476,53 @@ defmodule Server do
     end
   end
 
-  defp serve(client, config) do
-    try do
-      client
-      |> read_line()
-      |> process_command(client, config)
+  # defp serve(client, config) do
+  #   try do
+  #     client
+  #     |> read_line()
+  #     |> process_command(client, config)
 
-      serve(client, config)
-    catch
-      kind, reason ->
-        {:error, {kind, reason, __STACKTRACE__}}
+  #     serve(client, config)
+  #   catch
+  #     kind, reason ->
+  #       {:error, {kind, reason, __STACKTRACE__}}
+  #   end
+  # end
+
+  #
+  defp serve(client, config) do
+    case read_line(client) do
+      :timeout ->
+        serve(client, config)
+
+      {:error, :closed} ->
+        Logger.info("Client disconnected")
+        :ok
+
+      {:error, reason} ->
+        Logger.error("Error reading from socket: #{inspect(reason)}")
+        {:error, reason}
+
+      data ->
+        try do
+          process_command(data, client, config)
+          serve(client, config)
+        catch
+          kind, reason ->
+            Logger.error("Error processing command: #{inspect({kind, reason, __STACKTRACE__})}")
+            {:error, {kind, reason, __STACKTRACE__}}
+        end
     end
   end
+
+  # defp read_line(client) do
+  #   # 30-second timeout
+  #   case :gen_tcp.recv(client, 0, 30000) do
+  #     {:ok, data} -> data
+  #     {:error, :timeout} -> :timeout
+  #     {:error, reason} -> {:error, reason}
+  #   end
+  # end
 
   defp read_line(client) do
     case :gen_tcp.recv(client, 0) do
@@ -413,20 +531,108 @@ defmodule Server do
     end
   end
 
-  defp process_command(command, client, config) do
+  def process_frontend_command(command, client, config) do
     # Debug line
-    IO.puts("Received command: #{inspect(command)}")
+    IO.puts("Received frontend command: #{inspect(command)}")
 
-    case Server.Protocol.parse(command) do
+    parts = String.split(command)
+    resp_command = Server.Protocol.pack(parts) |> IO.iodata_to_binary()
+
+    case Server.Protocol.parse(resp_command) do
       {:ok, parsed_data, _rest} ->
         # Debug line
-        IO.puts("Parsed data: #{inspect(parsed_data)}")
+        IO.puts("Parsed frontend data: #{inspect(parsed_data)}")
         handle_command(parsed_data, client, config)
 
       {:continuation, _fun} ->
         # Debug line
-        IO.puts("Incomplete command")
+        IO.puts("Incomplete frontend command")
         write_line("-ERR Incomplete command\r\n", client)
+    end
+  end
+
+  # def process_command(command, client, config) do
+  #   # Debug line
+  #   IO.puts("Received command: #{inspect(command)}")
+
+  #   case Server.Protocol.parse(command) do
+  #     {:ok, parsed_data, _rest} ->
+  #       # Debug line
+  #       IO.puts("Parsed data: #{inspect(parsed_data)}")
+  #       handle_command(parsed_data, client, config)
+
+  #     {:continuation, _fun} ->
+  #       # Debug line
+  #       IO.puts("Incomplete command")
+  #       write_line("-ERR Incomplete command\r\n", client)
+  #   end
+  # end
+  #
+  # def process_command(command, client, config) do
+  #   case command do
+  #     {:error, :closed} ->
+  #       Logger.info("Connection closed")
+  #       {:error, :closed}
+
+  #     {:error, reason} ->
+  #       Logger.error("Error receiving command: #{inspect(reason)}")
+  #       {:error, reason}
+
+  #     data ->
+  #       IO.puts("Received command: #{inspect(data)}")
+
+  #       case Server.Protocol.parse(data) do
+  #         {:ok, parsed_data, _rest} ->
+  #           IO.puts("Parsed data: #{inspect(parsed_data)}")
+  #           handle_command(parsed_data, client, config)
+
+  #         {:continuation, _fun} ->
+  #           IO.puts("Incomplete command")
+  #           write_line("-ERR Incomplete command\r\n", client)
+  #       end
+  #   end
+  # end
+  #
+  def process_command(command, client, config) do
+    case command do
+      {:error, :closed} ->
+        Logger.info("Connection closed")
+        {:error, :closed}
+
+      {:error, reason} ->
+        Logger.error("Error receiving command: #{inspect(reason)}")
+        {:error, reason}
+
+      data ->
+        IO.puts("Received command: #{inspect(data)}")
+
+        try do
+          case Server.Protocol.parse(data) do
+            {:ok, parsed_data, _rest} ->
+              IO.puts("Parsed data: #{inspect(parsed_data)}")
+              handle_command(parsed_data, client, config)
+
+            {:continuation, _fun} ->
+              IO.puts("Incomplete command")
+              write_line("-ERR Incomplete command\r\n", client)
+
+            _ ->
+              Logger.error("Unexpected parse result for command: #{inspect(data)}")
+              write_line("-ERR Internal server error\r\n", client)
+          end
+        rescue
+          e ->
+            Logger.error("Error parsing command: #{inspect(e)}")
+            write_line("-ERR Internal server error\r\n", client)
+        catch
+          :exit, reason ->
+            Logger.error("Exit in command processing: #{inspect(reason)}")
+            write_line("-ERR Internal server error\r\n", client)
+
+          kind, reason ->
+            Logger.error("#{kind} in command processing: #{inspect(reason)}")
+            write_line("-ERR Internal server error\r\n", client)
+        end
     end
   end
 
@@ -468,6 +674,8 @@ defmodule Server do
 
     Logger.debug("Sending buffered commands to replicas: #{inspect(commands)}")
     Logger.debug("Number of clients: #{length(clients)}")
+
+    # Server.Acknowledge.increment_ack_count()
 
     Enum.each(clients, fn client ->
       Enum.each(commands, fn command ->
@@ -549,6 +757,7 @@ defmodule Server do
       response = "+FULLRESYNC #{replication_id()} #{replication_offset()}\r\n"
       :ok = :gen_tcp.send(client, response)
       Server.Clientbuffer.add_client(client)
+
       send_rdb_file(client)
     catch
       :error, :closed ->
@@ -584,6 +793,7 @@ defmodule Server do
         end
 
         Server.Pendingwrites.set_pending_writes()
+        # Server.Acknowledge.increment_ack_count()
         write_line("+OK\r\n", client)
 
         Server.Commandbuffer.add_command(["SET", key, value | rest])
@@ -825,6 +1035,7 @@ defmodule Server do
 
   defp execute_command("PING", [], client) do
     write_line("+PONG\r\n", client)
+    # {:ok, "+PONG\r\n"}
   end
 
   defp execute_command(command, _args, client) do
@@ -1093,6 +1304,7 @@ defmodule Server do
       # Wait for the specified timeout
       Process.sleep(timeout)
 
+      Server.Acknowledge.increment_ack_count()
       # After waiting, get the acknowledgment count and respond
       ack_count = Server.Acknowledge.get_ack_count()
       Logger.info("Acknowledge count: #{ack_count}")

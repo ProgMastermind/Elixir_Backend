@@ -17,12 +17,20 @@ defmodule Server.Config do
     GenServer.call(__MODULE__, {:get_config, key})
   end
 
+  def reset_all do
+    GenServer.call(__MODULE__, :reset_all)
+  end
+
   def handle_cast({:set_config, key, value}, state) do
     {:noreply, Map.put(state, key, value)}
   end
 
   def handle_call({:get_config, key}, _from, state) do
     {:reply, Map.get(state, key), state}
+  end
+
+  def handle_call(:reset_all, _from, _state) do
+    {:reply, :ok, %{}}
   end
 
   def get_rdb_path do

@@ -22,7 +22,8 @@ defmodule App.MixProject do
     [
       # or any other simple dependency
       {:jason, "~> 1.2"},
-      {:plug_cowboy, "~> 2.5"}
+      {:plug_cowboy, "~> 2.5"},
+      {:websock_adapter, "~> 0.4.0"}
     ]
   end
 end

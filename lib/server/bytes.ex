@@ -18,8 +18,16 @@ defmodule Server.Bytes do
     GenServer.call(__MODULE__, {:increment, bytes})
   end
 
+  def reset do
+    GenServer.call(__MODULE__, :reset)
+  end
+
   def handle_call(:get_offset, _from, state) do
     {:reply, state.offset, state}
+  end
+
+  def handle_call(:reset, _from, _state) do
+    {:reply, :ok, %{offset: 0, first_increment: true}}
   end
 
   def handle_call({:increment, bytes}, _from, %{offset: offset, first_increment: first} = state) do

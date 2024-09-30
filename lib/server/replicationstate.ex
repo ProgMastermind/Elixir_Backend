@@ -16,4 +16,7 @@ defmodule Server.Replicationstate do
     socket
   end
 
+  def reset do
+    Agent.update(__MODULE__, fn _ -> %{socket: nil} end)
+  end
 end

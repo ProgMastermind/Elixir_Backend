@@ -65,4 +65,8 @@ defmodule Server.Store do
     Logger.info("Get result for key: #{key} - #{inspect(result)}")
     result
   end
+
+  def clear_all do
+    Agent.update(__MODULE__, fn _ -> %{} end)
+  end
 end

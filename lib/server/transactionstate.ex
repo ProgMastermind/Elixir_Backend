@@ -12,6 +12,10 @@ defmodule Server.Transactionstate do
   def set(value) do
     Agent.update(__MODULE__, fn _ -> value end)
   end
+
+  def reset do
+    Agent.update(__MODULE__, fn _ -> false end)
+  end
 end
 
 # defmodule Server.Transactionstate do
