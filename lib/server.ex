@@ -520,28 +520,60 @@ defmodule Server do
   # end
 
   #
+  # defp serve(client, config) do
+  #   case read_line(client) do
+  #     :timeout ->
+  #       serve(client, config)
+
+  #     {:error, :closed} ->
+  #       Logger.info("Client disconnected")
+  #       :ok
+
+  #     {:error, reason} ->
+  #       Logger.error("Error reading from socket: #{inspect(reason)}")
+  #       {:error, reason}
+
+  #     data ->
+  #       try do
+  #         process_command(data, client, config)
+  #         serve(client, config)
+  #       catch
+  #         kind, reason ->
+  #           Logger.error("Error processing command: #{inspect({kind, reason, __STACKTRACE__})}")
+  #           {:error, {kind, reason, __STACKTRACE__}}
+  #       end
+  #   end
+  # end
+  #
+
+  def handle_health_check(client) do
+    response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK"
+    :gen_tcp.send(client, response)
+    :gen_tcp.close(client)
+  end
+
   defp serve(client, config) do
     case read_line(client) do
-      :timeout ->
-        serve(client, config)
+      {:ok, data} ->
+        cond do
+          String.starts_with?(data, "GET / HTTP/1.1") ->
+            handle_health_check(client)
+
+          String.starts_with?(data, "GET") ->
+            handle_health_check(client)
+
+          true ->
+            process_command(data, client, config)
+            serve(client, config)
+        end
 
       {:error, :closed} ->
-        Logger.info("Client disconnected")
+        IO.puts("Client disconnected")
         :ok
 
       {:error, reason} ->
-        Logger.error("Error reading from socket: #{inspect(reason)}")
-        {:error, reason}
-
-      data ->
-        try do
-          process_command(data, client, config)
-          serve(client, config)
-        catch
-          kind, reason ->
-            Logger.error("Error processing command: #{inspect({kind, reason, __STACKTRACE__})}")
-            {:error, {kind, reason, __STACKTRACE__}}
-        end
+        IO.puts("Error reading from socket: #{inspect(reason)}")
+        :gen_tcp.close(client)
     end
   end
 
