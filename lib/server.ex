@@ -7,7 +7,9 @@ defmodule Server do
   use Application
 
   def start(_type, _args) do
-    config = parse_args()
+    # config = parse_args()
+    port = Application.get_env(:your_app, :port, 4000)
+    config = %{port: port, replica_of: nil, dir: nil, dbfilename: nil}
 
     children = [
       Server.Store,
@@ -78,19 +80,40 @@ defmodule Server do
   Listen for incoming connections
   """
 
+  # def listen(config) do
+  #   IO.puts("Server listening on port #{config.port}")
+
+  #   {:ok, socket} =
+  #     :gen_tcp.listen(config.port, [:binary, active: false, reuseaddr: true, buffer: 1024 * 1024])
+
+  #   if config.replica_of do
+  #     spawn(fn ->
+  #       connect_to_master(config.replica_of, config.port)
+  #     end)
+  #   end
+
+  #   loop_acceptor(socket, config)
+  # end
+  #
+
   def listen(config) do
-    IO.puts("Server listening on port #{config.port}")
+    Logger.info("Server attempting to listen on port #{config.port}")
 
-    {:ok, socket} =
-      :gen_tcp.listen(config.port, [:binary, active: false, reuseaddr: true, buffer: 1024 * 1024])
+    case :gen_tcp.listen(config.port, [
+           :binary,
+           active: false,
+           reuseaddr: true,
+           buffer: 1024 * 1024,
+           ip: {0, 0, 0, 0}
+         ]) do
+      {:ok, socket} ->
+        Logger.info("Server successfully listening on port #{config.port}")
+        loop_acceptor(socket, config)
 
-    if config.replica_of do
-      spawn(fn ->
-        connect_to_master(config.replica_of, config.port)
-      end)
+      {:error, reason} ->
+        Logger.error("Failed to listen on port #{config.port}: #{inspect(reason)}")
+        {:error, reason}
     end
-
-    loop_acceptor(socket, config)
   end
 
   defp connect_to_master({master_host, master_port}, replica_port) do
