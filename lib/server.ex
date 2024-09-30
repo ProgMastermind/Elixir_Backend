@@ -8,7 +8,7 @@ defmodule Server do
 
   def start(_type, _args) do
     # config = parse_args()
-    port = Application.get_env(:your_app, :port, 4000)
+    port = Application.get_env(:redis, :port, 4000)
     config = %{port: port, replica_of: nil, dir: nil, dbfilename: nil}
 
     children = [
