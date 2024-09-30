@@ -537,14 +537,67 @@ defmodule Server do
 
   # ----------------------------------------------------------------------------------
   # Server Code
+  # defp loop_acceptor(socket, config) do
+  #   case :gen_tcp.accept(socket) do
+  #     {:ok, client} ->
+  #       spawn(fn -> serve(client, config) end)
+  #       loop_acceptor(socket, config)
+
+  #     {:error, reason} ->
+  #       {:error, reason}
+  #   end
+  # end
+  #
   defp loop_acceptor(socket, config) do
     case :gen_tcp.accept(socket) do
       {:ok, client} ->
-        spawn(fn -> serve(client, config) end)
+        spawn(fn -> handle_client(client, config) end)
         loop_acceptor(socket, config)
 
       {:error, reason} ->
-        {:error, reason}
+        Logger.error("Failed to accept client: #{inspect(reason)}")
+    end
+  end
+
+  defp handle_client(client, config) do
+    case :gen_tcp.recv(client, 0, 5000) do
+      {:ok, {:http_request, :GET, {:abs_path, "/"}, _}} ->
+        Logger.info("Received GET / request")
+        response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK"
+        :gen_tcp.send(client, response)
+        Logger.info("Sent OK response")
+
+      {:ok, {:http_request, :GET, {:abs_path, "/health"}, _}} ->
+        Logger.info("Received health check request")
+        response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK"
+        :gen_tcp.send(client, response)
+        Logger.info("Sent health check response")
+
+      {:ok, _} ->
+        serve(client, config)
+
+      {:error, :closed} ->
+        Logger.info("Client disconnected")
+
+      {:error, reason} ->
+        Logger.warning("Error reading from socket: #{inspect(reason)}")
+    end
+
+    :gen_tcp.close(client)
+  end
+
+  defp serve(client, config) do
+    case :gen_tcp.recv(client, 0, 5000) do
+      {:ok, data} ->
+        Logger.info("Received data: #{inspect(data)}")
+        process_command(data, client, config)
+        serve(client, config)
+
+      {:error, :closed} ->
+        Logger.info("Client disconnected")
+
+      {:error, reason} ->
+        Logger.warning("Error reading from socket: #{inspect(reason)}")
     end
   end
 
@@ -589,48 +642,48 @@ defmodule Server do
 
   #
 
-  defp handle_health_check(client) do
-    response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK"
-    :gen_tcp.send(client, response)
-    Logger.info("Health check response sent")
-    :gen_tcp.close(client)
-  end
+  # defp handle_health_check(client) do
+  #   response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK"
+  #   :gen_tcp.send(client, response)
+  #   Logger.info("Health check response sent")
+  #   :gen_tcp.close(client)
+  # end
 
-  defp serve(client, config) do
-    Logger.info("New client connection established")
+  # defp serve(client, config) do
+  #   Logger.info("New client connection established")
 
-    case :gen_tcp.recv(client, 0, 5000) do
-      {:ok, {:http_request, :GET, {:abs_path, ~c"/"}, _}} ->
-        Logger.info("Received GET / request")
-        response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK"
-        :gen_tcp.send(client, response)
-        Logger.info("Sent OK response")
-        :gen_tcp.close(client)
+  #   case :gen_tcp.recv(client, 0, 5000) do
+  #     {:ok, {:http_request, :GET, {:abs_path, ~c"/"}, _}} ->
+  #       Logger.info("Received GET / request")
+  #       response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK"
+  #       :gen_tcp.send(client, response)
+  #       Logger.info("Sent OK response")
+  #       :gen_tcp.close(client)
 
-      {:ok, {:http_request, :GET, {:abs_path, ~c"/health"}, _}} ->
-        Logger.info("Received health check request")
-        response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK"
-        :gen_tcp.send(client, response)
-        Logger.info("Sent health check response")
-        :gen_tcp.close(client)
+  #     {:ok, {:http_request, :GET, {:abs_path, ~c"/health"}, _}} ->
+  #       Logger.info("Received health check request")
+  #       response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK"
+  #       :gen_tcp.send(client, response)
+  #       Logger.info("Sent health check response")
+  #       :gen_tcp.close(client)
 
-      {:ok, data} ->
-        Logger.info("Received other request")
-        process_command(data, client, config)
-        serve(client, config)
+  #     {:ok, data} ->
+  #       Logger.info("Received other request")
+  #       process_command(data, client, config)
+  #       serve(client, config)
 
-      {:error, :closed} ->
-        Logger.info("Client disconnected normally")
+  #     {:error, :closed} ->
+  #       Logger.info("Client disconnected normally")
 
-      {:error, :timeout} ->
-        Logger.info("Client connection timed out")
-        :gen_tcp.close(client)
+  #     {:error, :timeout} ->
+  #       Logger.info("Client connection timed out")
+  #       :gen_tcp.close(client)
 
-      {:error, reason} ->
-        Logger.warning("Error reading from socket: #{inspect(reason)}")
-        :gen_tcp.close(client)
-    end
-  end
+  #     {:error, reason} ->
+  #       Logger.warning("Error reading from socket: #{inspect(reason)}")
+  #       :gen_tcp.close(client)
+  #   end
+  # end
 
   # defp read_line(client) do
   #   # 30-second timeout
