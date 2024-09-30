@@ -58,7 +58,8 @@ defmodule Server do
         switches: [port: :integer, replicaof: :string, dir: :string, dbfilename: :string]
       )
 
-    port = opts[:port] || 6379
+    # port = opts[:port] || 6379
+    port = String.to_integer(System.get_env("PORT") || "4000")
     replica_of = parse_replicaof(opts[:replicaof])
     dir = opts[:dir]
     dbfilename = opts[:dbfilename]
