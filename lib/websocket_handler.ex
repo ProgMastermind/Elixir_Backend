@@ -8,8 +8,8 @@ defmodule WebSocketHandler do
 
   def websocket_init(state) do
     Registry.register(Registry.WebSockets, :all, {})
-    # port = if state.type == :master, do: 6379, else: start_slave()
-    port = if state.type == :master, do: 4000, else: start_slave()
+    port = if state.type == :master, do: 6379, else: start_slave()
+    # port = if state.type == :master, do: 4000, else: start_slave()
 
     case :gen_tcp.connect(~c"localhost", port, [:binary, active: false]) do
       {:ok, socket} ->

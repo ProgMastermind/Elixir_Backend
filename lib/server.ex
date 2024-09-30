@@ -8,7 +8,8 @@ defmodule Server do
 
   def start(_type, _args) do
     # config = parse_args()
-    port = Application.get_env(:redis, :port, 4000)
+    port = Application.get_env(:redis, :port)
+    websocket_port = Application.get_env(:redis, :websocket_port)
     config = %{port: port, replica_of: nil, dir: nil, dbfilename: nil}
 
     children = [
@@ -30,7 +31,7 @@ defmodule Server do
         plug: WebSocketHandler,
         options: [
           dispatch: dispatch(),
-          port: 3001
+          port: websocket_port
         ]
       )
     ]
@@ -79,49 +80,49 @@ defmodule Server do
   Listen for incoming connections
   """
 
-  # def listen(config) do
-  #   IO.puts("Server listening on port #{config.port}")
+  def listen(config) do
+    IO.puts("Server listening on port #{config.port}")
 
-  #   {:ok, socket} =
-  #     :gen_tcp.listen(config.port, [:binary, active: false, reuseaddr: true, buffer: 1024 * 1024])
+    {:ok, socket} =
+      :gen_tcp.listen(config.port, [:binary, active: false, reuseaddr: true, buffer: 1024 * 1024])
 
-  #   if config.replica_of do
-  #     spawn(fn ->
-  #       connect_to_master(config.replica_of, config.port)
-  #     end)
-  #   end
+    if config.replica_of do
+      spawn(fn ->
+        connect_to_master(config.replica_of, config.port)
+      end)
+    end
 
-  #   loop_acceptor(socket, config)
-  # end
+    loop_acceptor(socket, config)
+  end
 
   #
 
-  def listen(config) do
-    Logger.info("Server attempting to listen on port #{config.port}")
+  # def listen(config) do
+  #   Logger.info("Server attempting to listen on port #{config.port}")
 
-    case :gen_tcp.listen(config.port, [
-           :binary,
-           active: false,
-           reuseaddr: true,
-           buffer: 1024 * 1024,
-           ip: {0, 0, 0, 0}
-         ]) do
-      {:ok, socket} ->
-        Logger.info("Server successfully listening on port #{config.port}")
+  #   case :gen_tcp.listen(config.port, [
+  #          :binary,
+  #          active: false,
+  #          reuseaddr: true,
+  #          buffer: 1024 * 1024,
+  #          ip: {0, 0, 0, 0}
+  #        ]) do
+  #     {:ok, socket} ->
+  #       Logger.info("Server successfully listening on port #{config.port}")
 
-        if config.replica_of do
-          spawn(fn ->
-            connect_to_master(config.replica_of, config.port)
-          end)
-        end
+  #       if config.replica_of do
+  #         spawn(fn ->
+  #           connect_to_master(config.replica_of, config.port)
+  #         end)
+  #       end
 
-        loop_acceptor(socket, config)
+  #       loop_acceptor(socket, config)
 
-      {:error, reason} ->
-        Logger.error("Failed to listen on port #{config.port}: #{inspect(reason)}")
-        {:error, reason}
-    end
-  end
+  #     {:error, reason} ->
+  #       Logger.error("Failed to listen on port #{config.port}: #{inspect(reason)}")
+  #       {:error, reason}
+  #   end
+  # end
 
   defp connect_to_master({master_host, master_port}, replica_port) do
     case :gen_tcp.connect(to_charlist(master_host), master_port, [
@@ -173,7 +174,8 @@ defmodule Server do
 
   def start_and_connect_second_slave do
     port = 6380 + :rand.uniform(100)
-    config = %{port: port, replica_of: {"localhost", 6379}, dir: nil, dbfilename: nil}
+    # config = %{port: port, replica_of: {"localhost", 6379}, dir: nil, dbfilename: nil}
+    config = %{port: port, replica_of: {"localhost", 4000}, dir: nil, dbfilename: nil}
 
     case Task.start(fn -> Server.listen(config) end) do
       {:ok, _pid} ->
@@ -336,27 +338,6 @@ defmodule Server do
     Logger.info("All states have been reset")
   end
 
-  # def parse_commands(socket) do
-  #   case :gen_tcp.recv(socket, 0, 5000) do
-  #     {:ok, data} ->
-  #       Logger.debug("Received data chunk: #{inspect(data)}, bytes: #{byte_size(data)}")
-  #       Server.Bytes.increment_offset(byte_size(data))
-
-  #       case parse_command(data) do
-  #         {:commands, commands} ->
-  #           Enum.each(commands, fn command ->
-  #             execute_replica_command(socket, command)
-  #           end)
-  #       end
-
-  #       parse_commands(socket)
-
-  #     {:error, closed} ->
-  #       Logger.info("Connection closed: #{inspect(closed)}")
-  #       {:error, closed}
-  #   end
-  # end
-  #
   def parse_commands(socket) do
     case :gen_tcp.recv(socket, 0, 5000) do
       {:ok, data} ->
@@ -372,19 +353,41 @@ defmodule Server do
 
         parse_commands(socket)
 
-      {:error, :closed} ->
-        Logger.debug("Client disconnected")
-        :ok
-
-      {:error, :timeout} ->
-        # Timeout is normal, just continue listening
-        parse_commands(socket)
-
-      {:error, reason} ->
-        Logger.warning("Connection error: #{inspect(reason)}")
-        {:error, reason}
+      {:error, closed} ->
+        Logger.info("Connection closed: #{inspect(closed)}")
+        {:error, closed}
     end
   end
+
+  #
+  # def parse_commands(socket) do
+  #   case :gen_tcp.recv(socket, 0, 5000) do
+  #     {:ok, data} ->
+  #       Logger.debug("Received data chunk: #{inspect(data)}, bytes: #{byte_size(data)}")
+  #       Server.Bytes.increment_offset(byte_size(data))
+
+  #       case parse_command(data) do
+  #         {:commands, commands} ->
+  #           Enum.each(commands, fn command ->
+  #             execute_replica_command(socket, command)
+  #           end)
+  #       end
+
+  #       parse_commands(socket)
+
+  #     {:error, :closed} ->
+  #       Logger.debug("Client disconnected")
+  #       :ok
+
+  #     {:error, :timeout} ->
+  #       # Timeout is normal, just continue listening
+  #       parse_commands(socket)
+
+  #     {:error, reason} ->
+  #       Logger.warning("Connection error: #{inspect(reason)}")
+  #       {:error, reason}
+  #   end
+  # end
 
   defp parse_command(data) do
     Logger.debug("Attempting to parse commands from data")
@@ -609,7 +612,7 @@ defmodule Server do
         :gen_tcp.close(client)
 
       {:error, reason} ->
-        Logger.warn("Error reading from socket: #{inspect(reason)}")
+        Logger.warning("Error reading from socket: #{inspect(reason)}")
         :gen_tcp.close(client)
     end
   end
