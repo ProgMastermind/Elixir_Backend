@@ -553,14 +553,17 @@ defmodule Server do
   end
 
   defp serve(client, config) do
-    case read_line(client) do
+    # 5 second timeout
+    case :gen_tcp.recv(client, 0, 5000) do
       {:ok, data} ->
         cond do
-          String.starts_with?(data, "GET / HTTP/1.1") ->
-            handle_health_check(client)
-
-          String.starts_with?(data, "GET") ->
-            handle_health_check(client)
+          String.starts_with?(data, "GET / HTTP/1.1") or
+              String.starts_with?(data, "GET /health HTTP/1.1") ->
+            Logger.info("Received health check request")
+            response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK"
+            :gen_tcp.send(client, response)
+            Logger.info("Sent health check response")
+            :gen_tcp.close(client)
 
           true ->
             process_command(data, client, config)
@@ -568,11 +571,14 @@ defmodule Server do
         end
 
       {:error, :closed} ->
-        IO.puts("Client disconnected")
-        :ok
+        Logger.info("Client disconnected")
+
+      {:error, :timeout} ->
+        Logger.info("Client connection timed out")
+        :gen_tcp.close(client)
 
       {:error, reason} ->
-        IO.puts("Error reading from socket: #{inspect(reason)}")
+        Logger.warn("Error reading from socket: #{inspect(reason)}")
         :gen_tcp.close(client)
     end
   end
