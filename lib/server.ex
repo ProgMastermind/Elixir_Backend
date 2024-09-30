@@ -91,7 +91,8 @@ defmodule Server do
         active: false,
         reuseaddr: true,
         buffer: 1024 * 1024,
-        ip: {0, 0, 0, 0}
+        ip: {0, 0, 0, 0},
+        packet: :http
       ])
 
     if config.replica_of do
@@ -599,19 +600,24 @@ defmodule Server do
     Logger.info("New client connection established")
 
     case :gen_tcp.recv(client, 0, 5000) do
+      {:ok, {:http_request, :GET, {:abs_path, ~c"/"}, _}} ->
+        Logger.info("Received GET / request")
+        response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK"
+        :gen_tcp.send(client, response)
+        Logger.info("Sent OK response")
+        :gen_tcp.close(client)
+
+      {:ok, {:http_request, :GET, {:abs_path, ~c"/health"}, _}} ->
+        Logger.info("Received health check request")
+        response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK"
+        :gen_tcp.send(client, response)
+        Logger.info("Sent health check response")
+        :gen_tcp.close(client)
+
       {:ok, data} ->
-        Logger.info("Received data: #{inspect(data)}")
-
-        cond do
-          String.starts_with?(data, "GET / HTTP/1.1") or
-              String.starts_with?(data, "GET /health HTTP/1.1") ->
-            Logger.info("Handling health check request")
-            handle_health_check(client)
-
-          true ->
-            process_command(data, client, config)
-            serve(client, config)
-        end
+        Logger.info("Received other request")
+        process_command(data, client, config)
+        serve(client, config)
 
       {:error, :closed} ->
         Logger.info("Client disconnected normally")
