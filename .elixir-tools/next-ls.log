@@ -11035,3 +11035,185 @@ hint: it looks like the "do" on line 151 does not have a matching "end"
                 (next_ls 0.23.2) lib/next_ls.ex:47: NextLS.init/2
                 (gen_lsp 0.10.0) lib/gen_lsp.ex:201: GenLSP.init/1
                 (stdlib 6.0) proc_lib.erl:329: :proc_lib.init_p_do_apply/3
+
+21:06:23.532 [info] Loading 148 CA(s) from :otp store
+
+21:06:23.836 id=0 [debug] handled request client -> server initialize in 140ms
+
+21:06:23.846 [debug] sent notification server -> client window/logMessage
+
+21:06:23.853 [debug] NextLS v0.23.2 has initialized!
+
+21:06:23.853 [debug] sent notification server -> client window/logMessage
+
+21:06:23.853 [debug] Log file located at /home/prakash/Desktop/ElixirCache-Backend/.elixir-tools/next-ls.log
+
+21:06:23.858 [debug] sent notification server -> client window/logMessage
+
+21:06:23.858 id=66 [debug] sent request server -> client client/registerCapability
+
+21:06:23.858 [info] [extension] Credo initializing with options %NextLS.InitOpts.Extensions.Credo{enable: true, cli_options: []}
+
+21:06:27.063 [debug] sent notification server -> client window/logMessage
+
+21:06:27.063 [debug] Booting runtimes...
+
+21:06:27.067 id=8 [debug] sent request server -> client window/workDoneProgress/create
+
+21:06:27.074 [debug] sent notification server -> client $/progress
+
+21:06:27.092 [debug] sent notification server -> client window/logMessage
+
+21:06:27.092 [info] Beginning DB migration...
+
+21:06:27.098 [debug] sent notification server -> client window/logMessage
+
+21:06:27.099 [info] Database is on the latest version: 7
+
+21:06:27.099 [debug] sent notification server -> client window/logMessage
+
+21:06:27.099 [info] Finished DB migration...
+
+21:06:27.099 [debug] sent notification server -> client window/logMessage
+
+21:06:27.099 [info] Booting runtime for .
+
+- elixir: /home/prakash/.cache/elixir-tools/nextls/elixir/1-17-1/bin/elixir
+- zombie wrapper script: /home/prakash/.local/share/.burrito/next_ls_erts-15.0_0.23.2/lib/next_ls-0.23.2/priv/cmd
+- working_dir: /home/prakash/Desktop/ElixirCache-Backend
+- command: /home/prakash/.cache/elixir-tools/nextls/elixir/1-17-1/bin/elixir --no-halt --sname nextls-runtime-1727796987099015044 --cookie Z4ER2X2KFNZWMEC65F5SIBKLBWALO6AXJYUMIFNSO6GV3FRQKUZA==== -S mix loadpaths --no-compile
+
+Environment: 
+
+LSP=nextls
+NEXTLS_PARENT_PID=g1h3NW5leHQtbHMtMTcyNzc5Njk4MzU1NDg1NTE5NUBwcmFrYXNoLU1pLU5vdGVCb29rLVVsdHJhAAAA2wAAAABm/Bb4
+MIX_ENV=dev
+MIX_TARGET=host
+MIX_BUILD_ROOT=.elixir-tools/_build
+ROOTDIR=false
+BINDIR=false
+RELEASE_ROOT=false
+RELEASE_SYS_CONFIG=false
+PATH=/home/prakash/.cache/elixir-tools/nextls/elixir/1-17-1/bin:/home/prakash/.local/share/.burrito/next_ls_erts-15.0_0.23.2/bin:/home/linuxbrew/.linuxbrew/opt/node@20/bin:/home/prakash/bin:/home/linuxbrew/.linuxbrew/bin:/home/prakash/.local/bin:/home/prakash/.nvm/versions/node/v20.17.0/bin:/home/prakash/.asdf/shims:/home/prakash/.asdf/bin:/home/linuxbrew/.linuxbrew/opt/gcc@12/bin:/home/linuxbrew/.linuxbrew/bin:/home/linuxbrew/.linuxbrew/sbin:/home/linuxbrew/.linuxbrew/opt/node@20/bin:/home/prakash/bin:/home/linuxbrew/.linuxbrew/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/snap/bin:/home/prakash/.local/bin:/home/prakash/.local/bin:/home/prakash/.local/bin
+MIX_HOME=/home/prakash/.cache/elixir-tools/nextls/elixir/1-17-1/.mix
+MIX_ARCHIVES=/home/prakash/.cache/elixir-tools/nextls/elixir/1-17-1/.mix/archives
+
+
+21:06:27.099 [debug] handled notification client -> server initialized in 3260ms
+
+21:06:27.104 [debug] handled notification client -> server workspace/didChangeConfiguration in 4ms
+
+21:06:27.107 [debug] handled notification client -> server textDocument/didOpen in 3ms
+
+21:06:27.107 [debug] handled notification client -> server textDocument/didOpen in 445µs
+
+21:06:27.108 [debug] handled notification client -> server textDocument/didOpen in 159µs
+
+21:06:27.109 [debug] handled notification client -> server textDocument/didOpen in 1ms
+
+21:06:27.109 [debug] handled notification client -> server textDocument/didOpen in 242µs
+
+21:06:27.110 [debug] handled notification client -> server textDocument/didOpen in 1ms
+
+21:06:27.111 [debug] handled notification client -> server textDocument/didOpen in 612µs
+
+21:06:28.113 [debug] sent notification server -> client window/logMessage
+
+21:06:28.114 [info] Connected to node nextls-runtime-1727796987099015044@prakash-Mi-NoteBook-Ultra
+
+21:06:28.682 [debug] sent notification server -> client $/progress
+
+21:06:28.683 [debug] sent notification server -> client window/logMessage
+
+21:06:28.684 [debug] Runtime for folder  is ready...
+
+21:06:28.687 id=232 [debug] sent request server -> client window/workDoneProgress/create
+
+21:06:28.694 [debug] sent notification server -> client $/progress
+
+21:06:28.762 [debug] sent notification server -> client window/logMessage
+
+21:06:28.762 [info] Compiling 11 files (.ex)
+
+
+21:06:28.775 id=264 [debug] sent request server -> client window/workDoneProgress/create
+
+21:06:28.778 [debug] sent notification server -> client $/progress
+
+21:06:29.012 [debug] sent notification server -> client window/logMessage
+
+21:06:29.012 [info]       warning: clauses with the same name and arity (number of arguments) should be grouped together, "defp process_id/2" was previously defined (lib/server.ex:1163)
+      │
+ 1189 │   defp process_id(stream_key, id) do
+      │        ~
+      │
+      └─ lib/server.ex:1189:8
+
+
+
+21:06:29.346 [debug] sent notification server -> client $/progress
+
+21:06:29.748 [debug] sent notification server -> client window/logMessage
+
+21:06:29.748 [debug] sent notification server -> client $/progress
+
+21:06:29.749 [info] Compiled !
+
+21:06:29.753 [debug] sent notification server -> client textDocument/publishDiagnostics
+
+21:06:29.754 [debug] sent notification server -> client textDocument/publishDiagnostics
+
+00:05:03.332 [info] Loading 148 CA(s) from :otp store
+
+00:05:03.404 [notice] Application next_ls exited: NextLS.Application.start(:normal, []) returned an error: shutdown: failed to start child: NextLS.LSPSupervisor
+    ** (EXIT) shutdown: failed to start child: NextLS
+        ** (EXIT) an exception was raised:
+            ** (ErlangError) Erlang error: :enoent
+                (elixir 1.17.2) lib/system.ex:1114: System.cmd("elixir", ["--short-version"], [])
+                (next_ls 0.23.2) lib/next_ls.ex:47: NextLS.init/2
+                (gen_lsp 0.10.0) lib/gen_lsp.ex:201: GenLSP.init/1
+                (stdlib 6.0) proc_lib.erl:329: :proc_lib.init_p_do_apply/3
+
+00:05:06.639 [info] Loading 148 CA(s) from :otp store
+
+00:05:06.692 [notice] Application next_ls exited: NextLS.Application.start(:normal, []) returned an error: shutdown: failed to start child: NextLS.LSPSupervisor
+    ** (EXIT) shutdown: failed to start child: NextLS
+        ** (EXIT) an exception was raised:
+            ** (ErlangError) Erlang error: :enoent
+                (elixir 1.17.2) lib/system.ex:1114: System.cmd("elixir", ["--short-version"], [])
+                (next_ls 0.23.2) lib/next_ls.ex:47: NextLS.init/2
+                (gen_lsp 0.10.0) lib/gen_lsp.ex:201: GenLSP.init/1
+                (stdlib 6.0) proc_lib.erl:329: :proc_lib.init_p_do_apply/3
+
+00:05:09.940 [info] Loading 148 CA(s) from :otp store
+
+00:05:09.980 [notice] Application next_ls exited: NextLS.Application.start(:normal, []) returned an error: shutdown: failed to start child: NextLS.LSPSupervisor
+    ** (EXIT) shutdown: failed to start child: NextLS
+        ** (EXIT) an exception was raised:
+            ** (ErlangError) Erlang error: :enoent
+                (elixir 1.17.2) lib/system.ex:1114: System.cmd("elixir", ["--short-version"], [])
+                (next_ls 0.23.2) lib/next_ls.ex:47: NextLS.init/2
+                (gen_lsp 0.10.0) lib/gen_lsp.ex:201: GenLSP.init/1
+                (stdlib 6.0) proc_lib.erl:329: :proc_lib.init_p_do_apply/3
+
+00:05:13.231 [info] Loading 148 CA(s) from :otp store
+
+00:05:13.277 [notice] Application next_ls exited: NextLS.Application.start(:normal, []) returned an error: shutdown: failed to start child: NextLS.LSPSupervisor
+    ** (EXIT) shutdown: failed to start child: NextLS
+        ** (EXIT) an exception was raised:
+            ** (ErlangError) Erlang error: :enoent
+                (elixir 1.17.2) lib/system.ex:1114: System.cmd("elixir", ["--short-version"], [])
+                (next_ls 0.23.2) lib/next_ls.ex:47: NextLS.init/2
+                (gen_lsp 0.10.0) lib/gen_lsp.ex:201: GenLSP.init/1
+                (stdlib 6.0) proc_lib.erl:329: :proc_lib.init_p_do_apply/3
+
+00:05:16.483 [info] Loading 148 CA(s) from :otp store
+
+00:05:16.521 [notice] Application next_ls exited: NextLS.Application.start(:normal, []) returned an error: shutdown: failed to start child: NextLS.LSPSupervisor
+    ** (EXIT) shutdown: failed to start child: NextLS
+        ** (EXIT) an exception was raised:
+            ** (ErlangError) Erlang error: :enoent
+                (elixir 1.17.2) lib/system.ex:1114: System.cmd("elixir", ["--short-version"], [])
+                (next_ls 0.23.2) lib/next_ls.ex:47: NextLS.init/2
+                (gen_lsp 0.10.0) lib/gen_lsp.ex:201: GenLSP.init/1
+                (stdlib 6.0) proc_lib.erl:329: :proc_lib.init_p_do_apply/3

@@ -5,5 +5,5 @@ import Config
 # config :logger, level: :info
 if config_env() == :prod do
   port = System.get_env("PORT") || "4000"
-  config :elixircache, server_port: String.to_integer(port)
+  config :redis, server_port: String.to_integer(port)
 end
