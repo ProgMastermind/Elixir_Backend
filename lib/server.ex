@@ -7,10 +7,7 @@ defmodule Server do
   use Application
 
   def start(_type, _args) do
-    # config = parse_args()
-    port = Application.get_env(:redis, :port)
-    websocket_port = Application.get_env(:redis, :websocket_port)
-    config = %{port: port, replica_of: nil, dir: nil, dbfilename: nil}
+    config = parse_args()
 
     children = [
       Server.Store,
@@ -31,7 +28,7 @@ defmodule Server do
         plug: WebSocketHandler,
         options: [
           dispatch: dispatch(),
-          port: websocket_port
+          port: 3001
         ]
       )
     ]
@@ -61,7 +58,7 @@ defmodule Server do
         switches: [port: :integer, replicaof: :string, dir: :string, dbfilename: :string]
       )
 
-    port = opts[:port] || 6379
+    port = opts[:port] || 4000
     replica_of = parse_replicaof(opts[:replicaof])
     dir = opts[:dir]
     dbfilename = opts[:dbfilename]
@@ -81,18 +78,14 @@ defmodule Server do
   """
 
   def listen(config) do
-    # IO.puts("Server listening on port #{config.port}")
-    port = String.to_integer(System.get_env("PORT") || "4000")
-    Logger.info("Attempting to listen on port #{port}")
+    IO.puts("Server listening on port #{config.port}")
 
     {:ok, socket} =
       :gen_tcp.listen(config.port, [
         :binary,
         active: false,
         reuseaddr: true,
-        buffer: 1024 * 1024,
-        ip: {0, 0, 0, 0},
-        packet: :http
+        buffer: 1024 * 1024
       ])
 
     if config.replica_of do
@@ -537,69 +530,18 @@ defmodule Server do
 
   # ----------------------------------------------------------------------------------
   # Server Code
-  # defp loop_acceptor(socket, config) do
-  #   case :gen_tcp.accept(socket) do
-  #     {:ok, client} ->
-  #       spawn(fn -> serve(client, config) end)
-  #       loop_acceptor(socket, config)
-
-  #     {:error, reason} ->
-  #       {:error, reason}
-  #   end
-  # end
-  #
   defp loop_acceptor(socket, config) do
     case :gen_tcp.accept(socket) do
       {:ok, client} ->
-        spawn(fn -> handle_client(client, config) end)
+        spawn(fn -> serve(client, config) end)
         loop_acceptor(socket, config)
 
       {:error, reason} ->
-        Logger.error("Failed to accept client: #{inspect(reason)}")
+        {:error, reason}
     end
   end
 
-  defp handle_client(client, config) do
-    case :gen_tcp.recv(client, 0, 5000) do
-      {:ok, {:http_request, :GET, {:abs_path, "/"}, _}} ->
-        Logger.info("Received GET / request")
-        response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK"
-        :gen_tcp.send(client, response)
-        Logger.info("Sent OK response")
-
-      {:ok, {:http_request, :GET, {:abs_path, "/health"}, _}} ->
-        Logger.info("Received health check request")
-        response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK"
-        :gen_tcp.send(client, response)
-        Logger.info("Sent health check response")
-
-      {:ok, _} ->
-        serve(client, config)
-
-      {:error, :closed} ->
-        Logger.info("Client disconnected")
-
-      {:error, reason} ->
-        Logger.warning("Error reading from socket: #{inspect(reason)}")
-    end
-
-    :gen_tcp.close(client)
-  end
-
-  defp serve(client, config) do
-    case :gen_tcp.recv(client, 0, 5000) do
-      {:ok, data} ->
-        Logger.info("Received data: #{inspect(data)}")
-        process_command(data, client, config)
-        serve(client, config)
-
-      {:error, :closed} ->
-        Logger.info("Client disconnected")
-
-      {:error, reason} ->
-        Logger.warning("Error reading from socket: #{inspect(reason)}")
-    end
-  end
+  #
 
   # defp serve(client, config) do
   #   try do
@@ -615,84 +557,30 @@ defmodule Server do
   # end
 
   #
-  # defp serve(client, config) do
-  #   case read_line(client) do
-  #     :timeout ->
-  #       serve(client, config)
+  defp serve(client, config) do
+    case read_line(client) do
+      :timeout ->
+        serve(client, config)
 
-  #     {:error, :closed} ->
-  #       Logger.info("Client disconnected")
-  #       :ok
+      {:error, :closed} ->
+        Logger.info("Client disconnected")
+        :ok
 
-  #     {:error, reason} ->
-  #       Logger.error("Error reading from socket: #{inspect(reason)}")
-  #       {:error, reason}
+      {:error, reason} ->
+        Logger.error("Error reading from socket: #{inspect(reason)}")
+        {:error, reason}
 
-  #     data ->
-  #       try do
-  #         process_command(data, client, config)
-  #         serve(client, config)
-  #       catch
-  #         kind, reason ->
-  #           Logger.error("Error processing command: #{inspect({kind, reason, __STACKTRACE__})}")
-  #           {:error, {kind, reason, __STACKTRACE__}}
-  #       end
-  #   end
-  # end
-
-  #
-
-  # defp handle_health_check(client) do
-  #   response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK"
-  #   :gen_tcp.send(client, response)
-  #   Logger.info("Health check response sent")
-  #   :gen_tcp.close(client)
-  # end
-
-  # defp serve(client, config) do
-  #   Logger.info("New client connection established")
-
-  #   case :gen_tcp.recv(client, 0, 5000) do
-  #     {:ok, {:http_request, :GET, {:abs_path, ~c"/"}, _}} ->
-  #       Logger.info("Received GET / request")
-  #       response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK"
-  #       :gen_tcp.send(client, response)
-  #       Logger.info("Sent OK response")
-  #       :gen_tcp.close(client)
-
-  #     {:ok, {:http_request, :GET, {:abs_path, ~c"/health"}, _}} ->
-  #       Logger.info("Received health check request")
-  #       response = "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nOK"
-  #       :gen_tcp.send(client, response)
-  #       Logger.info("Sent health check response")
-  #       :gen_tcp.close(client)
-
-  #     {:ok, data} ->
-  #       Logger.info("Received other request")
-  #       process_command(data, client, config)
-  #       serve(client, config)
-
-  #     {:error, :closed} ->
-  #       Logger.info("Client disconnected normally")
-
-  #     {:error, :timeout} ->
-  #       Logger.info("Client connection timed out")
-  #       :gen_tcp.close(client)
-
-  #     {:error, reason} ->
-  #       Logger.warning("Error reading from socket: #{inspect(reason)}")
-  #       :gen_tcp.close(client)
-  #   end
-  # end
-
-  # defp read_line(client) do
-  #   # 30-second timeout
-  #   case :gen_tcp.recv(client, 0, 30000) do
-  #     {:ok, data} -> data
-  #     {:error, :timeout} -> :timeout
-  #     {:error, reason} -> {:error, reason}
-  #   end
-  # end
+      data ->
+        try do
+          process_command(data, client, config)
+          serve(client, config)
+        catch
+          kind, reason ->
+            Logger.error("Error processing command: #{inspect({kind, reason, __STACKTRACE__})}")
+            {:error, {kind, reason, __STACKTRACE__}}
+        end
+    end
+  end
 
   defp read_line(client) do
     case :gen_tcp.recv(client, 0) do
@@ -763,92 +651,92 @@ defmodule Server do
   #   end
   # end
   #
-  # def process_command(command, client, config) do
-  #   case command do
-  #     {:error, :closed} ->
-  #       Logger.info("Connection closed")
-  #       {:error, :closed}
-
-  #     {:error, reason} ->
-  #       Logger.error("Error receiving command: #{inspect(reason)}")
-  #       {:error, reason}
-
-  #     data ->
-  #       IO.puts("Received command: #{inspect(data)}")
-
-  #       try do
-  #         case Server.Protocol.parse(data) do
-  #           {:ok, parsed_data, _rest} ->
-  #             IO.puts("Parsed data: #{inspect(parsed_data)}")
-  #             handle_command(parsed_data, client, config)
-
-  #           {:continuation, _fun} ->
-  #             IO.puts("Incomplete command")
-  #             write_line("-ERR Incomplete command\r\n", client)
-
-  #           _ ->
-  #             Logger.error("Unexpected parse result for command: #{inspect(data)}")
-  #             write_line("-ERR Internal server error\r\n", client)
-  #         end
-  #       rescue
-  #         e ->
-  #           Logger.error("Error parsing command: #{inspect(e)}")
-  #           write_line("-ERR Internal server error\r\n", client)
-  #       catch
-  #         :exit, reason ->
-  #           Logger.error("Exit in command processing: #{inspect(reason)}")
-  #           write_line("-ERR Internal server error\r\n", client)
-
-  #         kind, reason ->
-  #           Logger.error("#{kind} in command processing: #{inspect(reason)}")
-  #           write_line("-ERR Internal server error\r\n", client)
-  #       end
-  #   end
-  # end
-
-  #
   def process_command(command, client, config) do
     case command do
       {:error, :closed} ->
-        Logger.debug("Connection closed")
+        Logger.info("Connection closed")
         {:error, :closed}
 
       {:error, reason} ->
-        Logger.warning("Error receiving command: #{inspect(reason)}")
+        Logger.error("Error receiving command: #{inspect(reason)}")
         {:error, reason}
 
-      data when is_binary(data) ->
-        if String.starts_with?(data, "GET / HTTP/1.1") do
-          response =
-            "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nRedis-like server is running."
+      data ->
+        IO.puts("Received command: #{inspect(data)}")
 
-          :gen_tcp.send(client, response)
-        else
-          try do
-            case Server.Protocol.parse(data) do
-              {:ok, parsed_data, _rest} ->
-                handle_command(parsed_data, client, config)
+        try do
+          case Server.Protocol.parse(data) do
+            {:ok, parsed_data, _rest} ->
+              IO.puts("Parsed data: #{inspect(parsed_data)}")
+              handle_command(parsed_data, client, config)
 
-              {:continuation, _fun} ->
-                Logger.debug("Incomplete command received")
-                write_line("-ERR Incomplete command\r\n", client)
+            {:continuation, _fun} ->
+              IO.puts("Incomplete command")
+              write_line("-ERR Incomplete command\r\n", client)
 
-              _ ->
-                Logger.warning("Unexpected parse result for command: #{inspect(data)}")
-                write_line("-ERR Internal server error\r\n", client)
-            end
-          rescue
-            e ->
-              Logger.error("Error processing command: #{inspect(e)}")
-              write_line("-ERR Internal server error\r\n", client)
-          catch
-            :exit, reason ->
-              Logger.error("Exit in command processing: #{inspect(reason)}")
+            _ ->
+              Logger.error("Unexpected parse result for command: #{inspect(data)}")
               write_line("-ERR Internal server error\r\n", client)
           end
+        rescue
+          e ->
+            Logger.error("Error parsing command: #{inspect(e)}")
+            write_line("-ERR Internal server error\r\n", client)
+        catch
+          :exit, reason ->
+            Logger.error("Exit in command processing: #{inspect(reason)}")
+            write_line("-ERR Internal server error\r\n", client)
+
+          kind, reason ->
+            Logger.error("#{kind} in command processing: #{inspect(reason)}")
+            write_line("-ERR Internal server error\r\n", client)
         end
     end
   end
+
+  #
+  # def process_command(command, client, config) do
+  #   case command do
+  #     {:error, :closed} ->
+  #       Logger.debug("Connection closed")
+  #       {:error, :closed}
+
+  #     {:error, reason} ->
+  #       Logger.warning("Error receiving command: #{inspect(reason)}")
+  #       {:error, reason}
+
+  #     data when is_binary(data) ->
+  #       if String.starts_with?(data, "GET / HTTP/1.1") do
+  #         response =
+  #           "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nRedis-like server is running."
+
+  #         :gen_tcp.send(client, response)
+  #       else
+  #         try do
+  #           case Server.Protocol.parse(data) do
+  #             {:ok, parsed_data, _rest} ->
+  #               handle_command(parsed_data, client, config)
+
+  #             {:continuation, _fun} ->
+  #               Logger.debug("Incomplete command received")
+  #               write_line("-ERR Incomplete command\r\n", client)
+
+  #             _ ->
+  #               Logger.warning("Unexpected parse result for command: #{inspect(data)}")
+  #               write_line("-ERR Internal server error\r\n", client)
+  #           end
+  #         rescue
+  #           e ->
+  #             Logger.error("Error processing command: #{inspect(e)}")
+  #             write_line("-ERR Internal server error\r\n", client)
+  #         catch
+  #           :exit, reason ->
+  #             Logger.error("Exit in command processing: #{inspect(reason)}")
+  #             write_line("-ERR Internal server error\r\n", client)
+  #         end
+  #       end
+  #   end
+  # end
 
   defp handle_command(parsed_data, client, config) do
     case parsed_data do
