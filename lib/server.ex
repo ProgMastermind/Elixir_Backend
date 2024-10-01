@@ -651,92 +651,92 @@ defmodule Server do
   #   end
   # end
   #
-  def process_command(command, client, config) do
-    case command do
-      {:error, :closed} ->
-        Logger.info("Connection closed")
-        {:error, :closed}
-
-      {:error, reason} ->
-        Logger.error("Error receiving command: #{inspect(reason)}")
-        {:error, reason}
-
-      data ->
-        IO.puts("Received command: #{inspect(data)}")
-
-        try do
-          case Server.Protocol.parse(data) do
-            {:ok, parsed_data, _rest} ->
-              IO.puts("Parsed data: #{inspect(parsed_data)}")
-              handle_command(parsed_data, client, config)
-
-            {:continuation, _fun} ->
-              IO.puts("Incomplete command")
-              write_line("-ERR Incomplete command\r\n", client)
-
-            _ ->
-              Logger.error("Unexpected parse result for command: #{inspect(data)}")
-              write_line("-ERR Internal server error\r\n", client)
-          end
-        rescue
-          e ->
-            Logger.error("Error parsing command: #{inspect(e)}")
-            write_line("-ERR Internal server error\r\n", client)
-        catch
-          :exit, reason ->
-            Logger.error("Exit in command processing: #{inspect(reason)}")
-            write_line("-ERR Internal server error\r\n", client)
-
-          kind, reason ->
-            Logger.error("#{kind} in command processing: #{inspect(reason)}")
-            write_line("-ERR Internal server error\r\n", client)
-        end
-    end
-  end
-
-  #
   # def process_command(command, client, config) do
   #   case command do
   #     {:error, :closed} ->
-  #       Logger.debug("Connection closed")
+  #       Logger.info("Connection closed")
   #       {:error, :closed}
 
   #     {:error, reason} ->
-  #       Logger.warning("Error receiving command: #{inspect(reason)}")
+  #       Logger.error("Error receiving command: #{inspect(reason)}")
   #       {:error, reason}
 
-  #     data when is_binary(data) ->
-  #       if String.starts_with?(data, "GET / HTTP/1.1") do
-  #         response =
-  #           "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nRedis-like server is running."
+  #     data ->
+  #       IO.puts("Received command: #{inspect(data)}")
 
-  #         :gen_tcp.send(client, response)
-  #       else
-  #         try do
-  #           case Server.Protocol.parse(data) do
-  #             {:ok, parsed_data, _rest} ->
-  #               handle_command(parsed_data, client, config)
+  #       try do
+  #         case Server.Protocol.parse(data) do
+  #           {:ok, parsed_data, _rest} ->
+  #             IO.puts("Parsed data: #{inspect(parsed_data)}")
+  #             handle_command(parsed_data, client, config)
 
-  #             {:continuation, _fun} ->
-  #               Logger.debug("Incomplete command received")
-  #               write_line("-ERR Incomplete command\r\n", client)
+  #           {:continuation, _fun} ->
+  #             IO.puts("Incomplete command")
+  #             write_line("-ERR Incomplete command\r\n", client)
 
-  #             _ ->
-  #               Logger.warning("Unexpected parse result for command: #{inspect(data)}")
-  #               write_line("-ERR Internal server error\r\n", client)
-  #           end
-  #         rescue
-  #           e ->
-  #             Logger.error("Error processing command: #{inspect(e)}")
-  #             write_line("-ERR Internal server error\r\n", client)
-  #         catch
-  #           :exit, reason ->
-  #             Logger.error("Exit in command processing: #{inspect(reason)}")
+  #           _ ->
+  #             Logger.error("Unexpected parse result for command: #{inspect(data)}")
   #             write_line("-ERR Internal server error\r\n", client)
   #         end
+  #       rescue
+  #         e ->
+  #           Logger.error("Error parsing command: #{inspect(e)}")
+  #           write_line("-ERR Internal server error\r\n", client)
+  #       catch
+  #         :exit, reason ->
+  #           Logger.error("Exit in command processing: #{inspect(reason)}")
+  #           write_line("-ERR Internal server error\r\n", client)
+
+  #         kind, reason ->
+  #           Logger.error("#{kind} in command processing: #{inspect(reason)}")
+  #           write_line("-ERR Internal server error\r\n", client)
   #       end
   #   end
   # end
+
+  #
+  def process_command(command, client, config) do
+    case command do
+      {:error, :closed} ->
+        Logger.debug("Connection closed")
+        {:error, :closed}
+
+      {:error, reason} ->
+        Logger.warning("Error receiving command: #{inspect(reason)}")
+        {:error, reason}
+
+      data when is_binary(data) ->
+        if String.starts_with?(data, "GET / HTTP/1.1") do
+          response =
+            "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nRedis-like server is running."
+
+          :gen_tcp.send(client, response)
+        else
+          try do
+            case Server.Protocol.parse(data) do
+              {:ok, parsed_data, _rest} ->
+                handle_command(parsed_data, client, config)
+
+              {:continuation, _fun} ->
+                Logger.debug("Incomplete command received")
+                write_line("-ERR Incomplete command\r\n", client)
+
+              _ ->
+                Logger.warning("Unexpected parse result for command: #{inspect(data)}")
+                write_line("-ERR Internal server error\r\n", client)
+            end
+          rescue
+            e ->
+              Logger.error("Error processing command: #{inspect(e)}")
+              write_line("-ERR Internal server error\r\n", client)
+          catch
+            :exit, reason ->
+              Logger.error("Exit in command processing: #{inspect(reason)}")
+              write_line("-ERR Internal server error\r\n", client)
+          end
+        end
+    end
+  end
 
   defp handle_command(parsed_data, client, config) do
     case parsed_data do
