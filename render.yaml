@@ -1,0 +1,10 @@
+services:
+  - type: web
+    name: elixir-cache
+    runtime: elixir
+    buildCommand: mix do deps.get, compile
+    startCommand: mix run --no-halt
+    envVars:
+      - key: MIX_ENV
+        value: prod
+    plan: free

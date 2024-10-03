@@ -28,7 +28,8 @@ defmodule Server do
         plug: WebSocketHandler,
         options: [
           dispatch: dispatch(),
-          port: 3001
+          # port: 3001
+          port: String.to_integer(System.get_env("PORT") || "3001")
         ]
       )
     ]
@@ -58,8 +59,8 @@ defmodule Server do
         switches: [port: :integer, replicaof: :string, dir: :string, dbfilename: :string]
       )
 
-    # port = opts[:port] || 6379
-    port = String.to_integer(System.get_env("PORT") || "6379")
+    port = opts[:port] || 6379
+    # port = String.to_integer(System.get_env("PORT") || "6379")
     replica_of = parse_replicaof(opts[:replicaof])
     dir = opts[:dir]
     dbfilename = opts[:dbfilename]
@@ -79,7 +80,7 @@ defmodule Server do
   """
 
   def listen(config) do
-    # IO.puts("Server listening on port #{config.port}")
+    IO.puts("Server listening on port #{config.port}")
     # port = System.get_env("PORT") || "4000"
 
     {:ok, socket} =
@@ -178,8 +179,8 @@ defmodule Server do
 
   def start_and_connect_second_slave do
     port = 6380 + :rand.uniform(100)
-    # config = %{port: port, replica_of: {"localhost", 6379}, dir: nil, dbfilename: nil}
-    config = %{port: port, replica_of: {"localhost", 4000}, dir: nil, dbfilename: nil}
+    config = %{port: port, replica_of: {"localhost", 6379}, dir: nil, dbfilename: nil}
+    # config = %{port: port, replica_of: {"localhost", 4000}, dir: nil, dbfilename: nil}
 
     case Task.start(fn -> Server.listen(config) end) do
       {:ok, _pid} ->
