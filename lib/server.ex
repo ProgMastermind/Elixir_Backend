@@ -58,7 +58,8 @@ defmodule Server do
         switches: [port: :integer, replicaof: :string, dir: :string, dbfilename: :string]
       )
 
-    port = opts[:port] || 6379
+    # port = opts[:port] || 6379
+    port = String.to_integer(System.get_env("PORT") || "6379")
     replica_of = parse_replicaof(opts[:replicaof])
     dir = opts[:dir]
     dbfilename = opts[:dbfilename]
@@ -79,10 +80,10 @@ defmodule Server do
 
   def listen(config) do
     # IO.puts("Server listening on port #{config.port}")
-    port = System.get_env("PORT") || "4000"
+    # port = System.get_env("PORT") || "4000"
 
     {:ok, socket} =
-      :gen_tcp.listen(port, [
+      :gen_tcp.listen(config.port, [
         :binary,
         active: false,
         reuseaddr: true,
