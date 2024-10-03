@@ -585,10 +585,29 @@ defmodule Server do
     end
   end
 
+  # defp read_line(client) do
+  #   case :gen_tcp.recv(client, 0) do
+  #     {:ok, data} -> data
+  #     {:error, reason} -> {:error, reason}
+  #   end
+  # end
+  #
   defp read_line(client) do
     case :gen_tcp.recv(client, 0) do
-      {:ok, data} -> data
-      {:error, reason} -> {:error, reason}
+      {:ok, data} ->
+        if String.starts_with?(data, "GET") or String.starts_with?(data, "HEAD") or String.starts_with?(data, "HTTP") do
+          Logger.info("Received HTTP request, responding with 200 OK")
+          :gen_tcp.send(client, "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nOK")
+          read_line(client)  # Continue listening
+        else
+          data
+        end
+      {:error, :closed} ->
+        Logger.info("Client disconnected normally")
+        {:error, :closed}
+      {:error, reason} ->
+        Logger.error("Error reading from socket: #{inspect(reason)}")
+        {:error, reason}
     end
   end
 
@@ -709,6 +728,7 @@ defmodule Server do
         {:error, reason}
 
       data when is_binary(data) ->
+        Logger.info("The command we have to handle: ", data)
         if String.starts_with?(data, "GET / HTTP/1.1") do
           response =
             "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\nRedis-like server is running."
@@ -717,6 +737,7 @@ defmodule Server do
         else
           try do
             case Server.Protocol.parse(data) do
+              Logger.info("The command we have to handle: ", data)
               {:ok, parsed_data, _rest} ->
                 handle_command(parsed_data, client, config)
 
