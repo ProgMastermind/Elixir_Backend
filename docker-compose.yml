@@ -1,0 +1,11 @@
+version: "3.8"
+services:
+  web:
+    build: .
+    ports:
+      - "3001:3001"
+    environment:
+      - MIX_ENV=prod
+    volumes:
+      - .:/app
+    command: mix run --no-halt
